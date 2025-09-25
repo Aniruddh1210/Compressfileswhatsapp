@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: whatsapp-compressor-bot
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+    healthCheckPath: /
+    autoDeploy: false
+    disk:
+      name: whatsapp-sessions
+      mountPath: /app/.wwebjs_auth
+      sizeGB: 1

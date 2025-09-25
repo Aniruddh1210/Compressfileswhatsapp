@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# WhatsApp session data (will be recreated on cloud)
+.wwebjs_auth/
+.wwebjs_cache/
+session_data/
+
+# Environment and logs
+.env
+*.log
+npm-debug.log*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+uploads/
+compressed/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
