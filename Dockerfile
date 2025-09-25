@@ -1,11 +1,23 @@
 # Use Node.js 20 LTS version
 FROM node:20-slim
 
-# Install system dependencies for Ghostscript and curl
+# Install system dependencies for Ghostscript, curl and Chromium
 RUN apt-get update && apt-get install -y \
     ghostscript \
     curl \
-    && rm -rf /var/lib/apt/lists/*# Set working directory
+    libnss3 \
+    libnspr4 \
+    libgconf-2-4 \
+    libxss1 \
+    libappindicator1 \
+    fonts-liberation \
+    libappindicator3-1 \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libgtk-3-0 \
+    libgtk-4-1 \
+  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # Copy package files
@@ -28,7 +40,7 @@ EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:3000 || exit 1
+  CMD curl -f http://localhost:${PORT:-3000} || exit 1
 
 # Start the application
 CMD ["npm", "start"]
