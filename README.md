@@ -1,5 +1,9 @@
 # 🤖 WhatsApp File Compressor Bot
 
+Compress PDFs and images to ≤1.9 MB via WhatsApp. Powered by whatsapp-web.js, Ghostscript, sharp, and a serverless Chromium.
+
+[![CI](https://github.com/Aniruddh1210/Compressfileswhatsapp/actions/workflows/ci.yml/badge.svg)](https://github.com/Aniruddh1210/Compressfileswhatsapp/actions/workflows/ci.yml)
+
 A smart WhatsApp bot that automatically compresses files to 2MB or less, perfect for sharing on apps with file size limits!
 
 ## ✨ Features
