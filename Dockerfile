@@ -1,27 +1,16 @@
-# Use Node.js 20 LTS version
-FROM node:20-slim
+# Use the official Node.js image with built-in Chrome support
+FROM ghcr.io/puppeteer/puppeteer:21.6.1
 
-# Install system dependencies for Chrome, Puppeteer, and PDF compression
+# Switch to root to install additional packages
+USER root
+
+# Install Ghostscript for PDF compression
 RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    ca-certificates \
-    apt-transport-https \
-    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
-    && apt-get update \
-    && apt-get install -y \
-    google-chrome-stable \
     ghostscript \
-    fonts-liberation \
-    libxss1 \
-    libappindicator1 \
-    libindicator7 \
     && rm -rf /var/lib/apt/lists/*
 
-# Tell Puppeteer to use the installed Chromium
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+# Switch back to pptruser for security
+USER pptruser
 
 # Set working directory
 WORKDIR /app
