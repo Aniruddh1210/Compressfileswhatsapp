@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  whatsapp-compressor:
+    build: .
+    container_name: whatsapp-compressor
+    environment:
+      - NODE_ENV=production
+      # Optional overrides (defaults are fine)
+      # - DATA_DIR=/data
+      # - AUTH_DIR=/data/auth
+      # - CACHE_DIR=/data/puppeteer
+      # - PORT=3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+
+volumes:
+  # Using a bind mount above for portability; define a named volume if preferred
+  data:
+    driver: local

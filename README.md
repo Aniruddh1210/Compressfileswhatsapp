@@ -35,6 +35,25 @@ npm start
 cat DEPLOYMENT.md
 ```
 
+### Enable Persistent WhatsApp Session (Recommended)
+
+To avoid re-scanning the QR after restarts, persist the session data and Chromium profile:
+
+1. The image defines a persistent mount at `/data` with subfolders:
+
+- `/data/auth` (WhatsApp LocalAuth session)
+- `/data/puppeteer` (Chromium user profile/cache)
+
+2. On Railway (or any host), add a volume and mount it to `/data`.
+
+3. Optional environment overrides:
+
+- `DATA_DIR` (default `/data`)
+- `AUTH_DIR` (default `${DATA_DIR}/auth`)
+- `CACHE_DIR` (default `${DATA_DIR}/puppeteer`)
+
+After mounting, scan the QR once. The session will survive restarts.
+
 ## 💡 How It Works
 
 1. **Send a file** to your WhatsApp Business number from any phone
@@ -86,3 +105,60 @@ Bot: "✅ **File Compressed Successfully!**
 - Send **"start"** → Welcome message
 
 Ready to compress? Let's get started! 🚀
+
+## 🆓 Run It Free (Indefinitely)
+
+If you want to avoid 30‑day limits and keep costs at $0 for your low daily usage, here are practical options:
+
+### Option A: Oracle Cloud Always Free VM (recommended free cloud)
+
+Oracle Cloud offers an "Always Free" compute VM that can run 24/7 at no cost if capacity is available in your region.
+
+High level steps:
+
+1. Create an Oracle Cloud account and enable Always Free (pick a region with free Ampere A1 availability).
+2. Provision an Always Free VM (Ubuntu 22.04 works well).
+3. Install Docker and Compose plugin on the VM.
+4. Clone this repo and start with Docker Compose. Data persists in `/data` (bind‑mounted `./data`).
+
+```bash
+# On the VM (Ubuntu):
+sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+echo \
+   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+   $(. /etc/os-release && echo $VERSION_CODENAME) stable" | \
+   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Pull code and run
+git clone <your-fork-or-repo-url>.git whatsapp2mbautomation
+cd whatsapp2mbautomation
+docker compose up -d --build
+
+# The bot runs; open logs to grab QR and scan with WhatsApp
+docker compose logs -f
+```
+
+Notes:
+
+- No public port is required for WhatsApp; the bot only needs outbound internet. The HTTP port is just for health.
+- The QR scan is one‑time when `/data` is persisted.
+
+### Option B: Home/NAS/Old Mini‑PC (zero hosting cost)
+
+Run it on any always‑on device at home. Requirements: Docker and outbound internet.
+
+1. On the device, install Docker + Docker Compose.
+2. Clone this repo and run `docker compose up -d --build`.
+3. Open logs, scan the QR once, done. The `./data` folder will persist the session.
+
+Bonus: If you later want a web URL, add Cloudflare Tunnel (free) to expose `/status` without opening ports.
+
+### Why not the common "free hosting" platforms?
+
+- Most free hobby plans (Railway, Render, etc.) now sleep or have time/credit limits and don’t support 24/7 background processes reliably.
+- Serverless platforms (Vercel/Netlify/Workers) don’t support always‑on Node processes with headless Chromium.
+
+The two options above are the most realistic “free forever” routes today.
