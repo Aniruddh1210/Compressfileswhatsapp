@@ -1,19 +1,11 @@
-# Use the official Node.js image with built-in Chrome support
-FROM ghcr.io/puppeteer/puppeteer:21.6.1
+# Use Node.js 20 LTS version
+FROM node:20-slim
 
-# Switch to root to install additional packages
-USER root
-
-# Install Ghostscript for PDF compression and curl for healthcheck
+# Install system dependencies for Ghostscript and curl
 RUN apt-get update && apt-get install -y \
-  ghostscript \
-  curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Switch back to pptruser for security
-USER pptruser
-
-# Set working directory
+    ghostscript \
+    curl \
+    && rm -rf /var/lib/apt/lists/*# Set working directory
 WORKDIR /app
 
 # Copy package files

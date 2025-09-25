@@ -3,6 +3,7 @@ const qrcode = require('qrcode-terminal');
 const { enhancedPDFCompression } = require('./compression-enhanced');
 const { compressImageEnhanced } = require('./compression-enhanced');
 const express = require('express');
+const chromium = require('@sparticuz/chromium');
 const app = express();
 
 // Minimal HTTP server for health checks and uptime
@@ -14,15 +15,40 @@ app.listen(PORT, () => console.log(`🩺 Health server listening on :${PORT}`));
 console.log('🚀 Starting WhatsApp File Compressor Bot...');
 
 console.log('🔧 Creating WhatsApp client...');
-const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: { 
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
-    }
+
+// Create client with serverless-friendly Chromium
+async function createClient() {
+    const client = new Client({
+        authStrategy: new LocalAuth(),
+        puppeteer: { 
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu'
+            ],
+            executablePath: await chromium.executablePath()
+        }
+    });
+    return client;
+}
+
+// Initialize client
+let client;
+createClient().then(c => {
+    client = c;
+    console.log('✅ Client created, setting up event listeners...');
+    setupEventListeners();
+    initializeClient();
+}).catch(err => {
+    console.error('❌ Failed to create client:', err);
 });
-console.log('✅ Client created, setting up event listeners...');
+
+function setupEventListeners() {
 
 client.on('qr', qr => {
     qrcode.generate(qr, { small: true });
@@ -98,8 +124,11 @@ client.on('message', async message => {
         }
     }
 });
+}
 
-console.log('🚀 Initializing WhatsApp client...');
-client.initialize().catch(err => {
-    console.error('❌ Initialization failed:', err);
-});
+function initializeClient() {
+    console.log('🚀 Initializing WhatsApp client...');
+    client.initialize().catch(err => {
+        console.error('❌ Initialization failed:', err);
+    });
+}
