@@ -4,9 +4,10 @@ FROM ghcr.io/puppeteer/puppeteer:21.6.1
 # Switch to root to install additional packages
 USER root
 
-# Install Ghostscript for PDF compression
+# Install Ghostscript for PDF compression and curl for healthcheck
 RUN apt-get update && apt-get install -y \
-    ghostscript \
+  ghostscript \
+  curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Switch back to pptruser for security
