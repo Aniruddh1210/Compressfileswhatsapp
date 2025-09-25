@@ -2,6 +2,14 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const { enhancedPDFCompression } = require('./compression-enhanced');
 const { compressImageEnhanced } = require('./compression-enhanced');
+const express = require('express');
+const app = express();
+
+// Minimal HTTP server for health checks and uptime
+const PORT = process.env.PORT || 3000;
+app.get('/', (_req, res) => res.status(200).send('OK'));
+app.get('/healthz', (_req, res) => res.status(200).json({ status: 'ok' }));
+app.listen(PORT, () => console.log(`🩺 Health server listening on :${PORT}`));
 
 console.log('🚀 Starting WhatsApp File Compressor Bot...');
 
