@@ -65,8 +65,8 @@ async function createClient() {
                 '--disable-gpu'
             ],
             executablePath: await chromium.executablePath(),
-            // Persist Chromium profile to keep cookies and improve stability across restarts
-            userDataDir: CACHE_DIR,
+            // Note: Do NOT set puppeteer.userDataDir with LocalAuth.
+            // LocalAuth manages its own storage and is incompatible with a custom userDataDir.
         }
     });
     return client;
