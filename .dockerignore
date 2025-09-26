@@ -118,6 +118,7 @@ public
 temp/
 *.tmp
 *.temp
+data/
 
 # Test files
 test_*.pdf

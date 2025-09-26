@@ -15,6 +15,10 @@ const runtimeState = {
     hasQr: false,
 };
 
+// Keep the latest QR code (raw + ASCII) so we can expose it via HTTP
+let latestQr = null; // raw QR string
+let latestQrAscii = null; // pre-rendered ASCII for browsers/terminals
+
 // Minimal HTTP server for health checks and uptime
 const PORT = process.env.PORT || 3000;
 app.get('/', (_req, res) => res.status(200).send('OK'));
@@ -25,6 +29,59 @@ app.get('/status', (_req, res) => {
         authenticated: runtimeState.authenticated,
         hasQr: runtimeState.hasQr,
     });
+});
+// Serve the current QR as ASCII when available
+app.get('/qr', (_req, res) => {
+    if (!runtimeState.hasQr || !latestQrAscii) {
+        return res.status(404).json({ message: runtimeState.authenticated ? 'Already authenticated' : 'QR not available yet' });
+    }
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    return res.status(200).send(latestQrAscii);
+});
+
+// Logout and re-initialize to show a fresh QR
+app.post('/logout', async (_req, res) => {
+    try {
+        console.log('🔄 Logout requested via API...');
+        await client.logout();
+        runtimeState.authenticated = false;
+        runtimeState.ready = false;
+        latestQr = null;
+        latestQrAscii = null;
+        // Re-initialize so a fresh QR is emitted
+        setTimeout(() => {
+            console.log('🚀 Re-initializing client after logout...');
+            client.initialize().catch(err => console.error('❌ Re-initialize after logout failed:', err));
+        }, 500);
+        res.status(200).json({ message: 'Logged out. Waiting for new QR...' });
+    } catch (e) {
+        console.error('❌ Logout failed:', e);
+        res.status(500).json({ error: 'Logout failed', details: e?.message });
+    }
+});
+
+// Dangerous: clear LocalAuth data on disk and re-create client for a full reset
+app.post('/reset-auth', async (_req, res) => {
+    try {
+        console.log('🧹 Full auth reset requested via API...');
+        runtimeState.authenticated = false;
+        runtimeState.ready = false;
+        latestQr = null;
+        latestQrAscii = null;
+        if (client) {
+            try { await client.destroy(); } catch (_) {}
+        }
+        await fs.remove(AUTH_DIR);
+        await fs.ensureDir(AUTH_DIR);
+        // Recreate client and initialize
+        client = await createClient();
+        setupEventListeners();
+        initializeClient();
+        res.status(200).json({ message: 'Auth reset. Waiting for new QR...' });
+    } catch (e) {
+        console.error('❌ Reset auth failed:', e);
+        res.status(500).json({ error: 'Reset auth failed', details: e?.message });
+    }
 });
 app.listen(PORT, () => console.log(`🩺 Health server listening on :${PORT}`));
 
@@ -89,6 +146,16 @@ client.on('qr', qr => {
     qrcode.generate(qr, { small: true });
     console.log('📱 Scan this QR code with your WhatsApp account to authenticate.');
     runtimeState.hasQr = true;
+    latestQr = qr;
+    try {
+        // Render a small ASCII QR similar to terminal output
+        // qrcode-terminal doesn't give us the string directly, so we generate via a temporary capture
+        let ascii = '';
+        qrcode.generate(qr, { small: true }, (q) => { ascii = q; });
+        latestQrAscii = ascii || 'QR available but ASCII render failed';
+    } catch (e) {
+        latestQrAscii = 'QR available but failed to render ASCII';
+    }
 });
 
 client.on('ready', () => {
@@ -96,12 +163,16 @@ client.on('ready', () => {
     console.log('💡 Users need to send "help compress" to enable file compression in their chat.');
     runtimeState.ready = true;
     runtimeState.hasQr = false; // once ready, QR should no longer be presented
+    latestQr = null;
+    latestQrAscii = null;
 });
 
 client.on('authenticated', () => {
     console.log('🔐 WhatsApp authentication successful!');
     runtimeState.authenticated = true;
     runtimeState.hasQr = false;
+    latestQr = null;
+    latestQrAscii = null;
 });
 
 client.on('auth_failure', msg => {
