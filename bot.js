@@ -32,11 +32,19 @@ app.get('/status', (_req, res) => {
 });
 // Serve the current QR as ASCII when available
 app.get('/qr', (_req, res) => {
-    if (!runtimeState.hasQr || !latestQrAscii) {
+    if (!runtimeState.hasQr || !latestQr) {
         return res.status(404).json({ message: runtimeState.authenticated ? 'Already authenticated' : 'QR not available yet' });
     }
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    return res.status(200).send(latestQrAscii);
+    try {
+        let ascii = '';
+        qrcode.generate(latestQr, { small: true }, (q) => { ascii = q; });
+        ascii = ascii || latestQrAscii || '';
+        if (!ascii) throw new Error('ASCII not ready');
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        return res.status(200).send(ascii);
+    } catch (e) {
+        return res.status(500).json({ message: 'Failed to render QR', error: e?.message });
+    }
 });
 
 // Logout and re-initialize to show a fresh QR
