@@ -290,7 +290,7 @@ async function compressPDFEnhanced(buffer, filename) {
 /**
  * Enhanced PDF compression with more granular control to find the best quality under 2MB.
  */
-async function enhancedPDFCompression(buffer, filename) {
+async function enhancedPDFCompression(buffer, filename, recursionDepth = 0) {
     try {
         console.log(`✨ Starting enhanced PDF compression...`);
         
@@ -386,65 +386,101 @@ async function enhancedPDFCompression(buffer, filename) {
         const maxSize = 1.9 * 1024 * 1024; // Target 1.9MB for WhatsApp overhead
         const idealMinSize = 1.5 * 1024 * 1024; // Prefer results above 1.5MB for quality
 
-        // Check if original is already close to target
-            const origSizeMB = buffer.length / 1024 / 1024;
-            if (buffer.length <= maxSize) {
-                console.log(`✨ Original file ${origSizeMB.toFixed(2)}MB is already under target!`);
-            bestPassResult = buffer;
-            bestPassScore = buffer.length;
-        } else {
-            // Smart selection: find the largest file that's still under 1.9MB
+        // FIXED LOGIC: Always return the BEST compressed result, never original unless it's already perfect
+        console.log(`🎯 Analyzing ${passResults.length} compression results...`);
+        
+        // Step 1: Find best result under 2MB (prioritizing larger = better quality)
+        for(const res of passResults) {
+            const sizeMB = res.size / 1024 / 1024;
+            console.log(`🔍 Evaluating: ${sizeMB.toFixed(2)}MB`);
+            
+            if (res.size <= maxSize) {
+                // Always prefer the largest file under 2MB for best quality
+                if (res.size > bestPassScore) {
+                    bestPassScore = res.size;
+                    bestPassResult = res.buffer;
+                    console.log(`📈 New best: ${sizeMB.toFixed(2)}MB (closest to 1.9MB)`);
+                }
+            }
+        }
+        
+        // Step 2: If no result under 2MB, take the smallest available result
+        if (!bestPassResult) {
+            console.log(`⚠️ No results under 2MB - selecting smallest available result`);
+            let smallestResult = null;
+            let smallestSize = Infinity;
+            
             for(const res of passResults) {
-                const sizeMB = res.size / 1024 / 1024;
-                console.log(`🔍 Evaluating: ${sizeMB.toFixed(2)}MB`);
-                
-                if (res.size <= maxSize) {
-                    // Prefer results closer to 1.9MB but prioritize staying under limit
-                    if (res.size > bestPassScore) {
-                        bestPassScore = res.size;
-                        bestPassResult = res.buffer;
-                        console.log(`📈 New best: ${sizeMB.toFixed(2)}MB (closest to 1.9MB)`);
-                    }
+                if (res.size < smallestSize) {
+                    smallestSize = res.size;
+                    smallestResult = res.buffer;
                 }
             }
             
-                // Special logic: If we have results that are too small (under 1MB) and original is manageable
-                // check if we should prefer a slightly larger result from a different approach
-                if (bestPassResult && bestPassScore < 1024 * 1024 && origSizeMB <= 3.0) {
-                    console.log(`🤔 Current best is quite small (${(bestPassScore/1024/1024).toFixed(2)}MB). Looking for better quality...`);
-                
-                    // Try to find a result that's at least 1.2MB if possible
-                    let betterQualityResult = null;
-                    let betterQualityScore = bestPassScore;
-                
-                    for(const res of passResults) {
-                        if (res.size <= maxSize && res.size >= 1.2 * 1024 * 1024) {
-                            if (res.size > betterQualityScore) {
-                                betterQualityScore = res.size;
-                                betterQualityResult = res.buffer;
-                                console.log(`📈 Found better quality option: ${(res.size/1024/1024).toFixed(2)}MB`);
-                            }
-                        }
-                    }
-                
-                    if (betterQualityResult) {
-                        bestPassResult = betterQualityResult;
-                        bestPassScore = betterQualityScore;
-                    }
-                }
-
-            // Fallback: if original is close to 2MB and we only have very small compressed versions
-            if (!bestPassResult && buffer.length <= 2.1 * 1024 * 1024) {
-                 console.log(`🔄 Fallback: Using original ${origSizeMB.toFixed(2)}MB (acceptable size)`);
-                bestPassResult = buffer;
-                bestPassScore = buffer.length;
+            if (smallestResult) {
+                bestPassResult = smallestResult;
+                bestPassScore = smallestSize;
+                console.log(`📦 Using smallest result: ${(smallestSize/1024/1024).toFixed(2)}MB`);
             }
         }
+        
+        // Step 3: Quality enhancement for very small results
+        if (bestPassResult && bestPassScore < 1024 * 1024) {
+            console.log(`🤔 Current best is quite small (${(bestPassScore/1024/1024).toFixed(2)}MB). Looking for better quality...`);
+            
+            // Try to find a result that's at least 1.2MB for better quality
+            for(const res of passResults) {
+                const sizeMB = res.size / 1024 / 1024;
+                if (res.size <= maxSize && res.size >= 1.2 * 1024 * 1024 && res.size > bestPassScore) {
+                    bestPassScore = res.size;
+                    bestPassResult = res.buffer;
+                    console.log(`📈 Better quality found: ${sizeMB.toFixed(2)}MB`);
+                }
+            }
+        }
+        
+        // Step 4: ONLY use original if it's already under 2MB AND better than our best result
+        const origSizeMB = buffer.length / 1024 / 1024;
+        if (buffer.length <= maxSize && buffer.length > bestPassScore) {
+            console.log(`✨ Original file ${origSizeMB.toFixed(2)}MB is better than compressed results!`);
+            bestPassResult = buffer;
+            bestPassScore = buffer.length;
+        }
 
+        // CRITICAL: Always use the best compressed result
         if (bestPassResult) {
             bestResult = bestPassResult;
             bestSize = bestPassResult.length;
             console.log(`✅ Best result: ${(bestSize / 1024 / 1024).toFixed(2)}MB`);
+        } else {
+            // Absolute fallback: If all compression failed, return original but log the issue
+            console.log(`⚠️ ALL COMPRESSION FAILED - Returning original ${origSizeMB.toFixed(2)}MB (THIS SHOULD NOT HAPPEN)`);
+            bestResult = buffer;
+            bestSize = buffer.length;
+        }
+        
+        // 🔄 RECURSIVE COMPRESSION: Only attempt if we haven't recursed yet and file is still > 2MB
+        if (bestSize > MAX_SIZE && bestResult !== buffer && recursionDepth === 0) {
+            console.log(`🔄 Result ${(bestSize/1024/1024).toFixed(2)}MB still too large - trying one recursive compression pass...`);
+            
+            try {
+                const recursiveResult = await enhancedPDFCompression(bestResult, filename, recursionDepth + 1);
+                const improvement = bestSize - recursiveResult.buffer.length;
+                const improvementPercent = (improvement / bestSize) * 100;
+                
+                // Only use recursive result if it's meaningfully better (>1% improvement)
+                if (improvement > 0 && improvementPercent > 1) {
+                    console.log(`✅ Recursive compression improved: ${(bestSize/1024/1024).toFixed(2)}MB → ${(recursiveResult.buffer.length/1024/1024).toFixed(2)}MB (${improvementPercent.toFixed(1)}%)`);
+                    bestResult = recursiveResult.buffer;
+                    bestSize = recursiveResult.buffer.length;
+                } else {
+                    console.log(`⏹️ Recursive compression yielded minimal improvement (${improvementPercent.toFixed(1)}%), using original result`);
+                }
+            } catch (recursiveError) {
+                console.log(`⚠️ Recursive compression failed: ${recursiveError.message}`);
+            }
+        } else if (recursionDepth > 0) {
+            console.log(`🔁 Recursion depth ${recursionDepth} - skipping further recursion`);
         }
         
         const finalSizeMB = bestSize / 1024 / 1024;
