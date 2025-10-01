@@ -4,7 +4,7 @@
   "description": "WhatsApp bot that automatically compresses files to 2MB or less",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js",
+    "start": "CHROME_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' node bot.js",
     "dev": "nodemon bot.js",
     "build": "echo 'No build step required'"
   },

@@ -19,6 +19,9 @@ const runtimeState = {
 let latestQr = null; // raw QR string
 let latestQrAscii = null; // pre-rendered ASCII for browsers/terminals
 
+// Track which chats have requested compression
+const enabledChats = new Set();
+
 // Minimal HTTP server for health checks and uptime
 const PORT = process.env.PORT || 3000;
 app.get('/', (_req, res) => res.status(200).send('OK'));
@@ -52,16 +55,8 @@ app.post('/logout', async (_req, res) => {
     try {
         console.log('🔄 Logout requested via API...');
         await client.logout();
-        runtimeState.authenticated = false;
-        runtimeState.ready = false;
-        latestQr = null;
-        latestQrAscii = null;
-        // Re-initialize so a fresh QR is emitted
-        setTimeout(() => {
-            console.log('🚀 Re-initializing client after logout...');
-            client.initialize().catch(err => console.error('❌ Re-initialize after logout failed:', err));
-        }, 500);
-        res.status(200).json({ message: 'Logged out. Waiting for new QR...' });
+        // The 'disconnected' event will handle state changes and re-initialization
+        res.status(200).json({ message: 'Logged out. Client will re-initialize.' });
     } catch (e) {
         console.error('❌ Logout failed:', e);
         res.status(500).json({ error: 'Logout failed', details: e?.message });
@@ -72,19 +67,21 @@ app.post('/logout', async (_req, res) => {
 app.post('/reset-auth', async (_req, res) => {
     try {
         console.log('🧹 Full auth reset requested via API...');
-        runtimeState.authenticated = false;
-        runtimeState.ready = false;
-        latestQr = null;
-        latestQrAscii = null;
         if (client) {
-            try { await client.destroy(); } catch (_) {}
+            try {
+                await client.destroy();
+                console.log('✅ Previous client instance destroyed.');
+            } catch (e) {
+                console.error('⚠️ Could not destroy previous client instance:', e.message);
+            }
         }
         await fs.remove(AUTH_DIR);
         await fs.ensureDir(AUTH_DIR);
-        // Recreate client and initialize
-        client = await createClient();
-        setupEventListeners();
-        initializeClient();
+        console.log('📁 Auth directory cleared.');
+        
+        // Restart the client creation and initialization process
+        start();
+
         res.status(200).json({ message: 'Auth reset. Waiting for new QR...' });
     } catch (e) {
         console.error('❌ Reset auth failed:', e);
@@ -98,7 +95,7 @@ console.log('🚀 Starting WhatsApp File Compressor Bot...');
 console.log('🔧 Creating WhatsApp client...');
 
 // Prepare persistent storage paths
-const DATA_DIR = process.env.DATA_DIR || '/data';
+const DATA_DIR = process.env.DATA_DIR || './data';
 const AUTH_DIR = process.env.AUTH_DIR || path.join(DATA_DIR, 'auth');
 const CACHE_DIR = process.env.CACHE_DIR || path.join(DATA_DIR, 'puppeteer');
 
@@ -118,7 +115,7 @@ async function createClient() {
             // Store session under AUTH_DIR
             dataPath: AUTH_DIR,
         }),
-        puppeteer: { 
+        puppeteer: {
             headless: true,
             args: [
                 '--no-sandbox',
@@ -129,7 +126,10 @@ async function createClient() {
                 '--no-zygote',
                 '--disable-gpu'
             ],
-            executablePath: await chromium.executablePath(),
+            // Prefer an explicit CHROME_PATH (useful on macOS). If not set, fall back to
+            // @sparticuz/chromium's path (which is Linux-focused). This avoids ENOEXEC
+            // when the packaged chromium is a Linux ELF on macOS.
+            executablePath: process.env.CHROME_PATH || await chromium.executablePath(),
             // Note: Do NOT set puppeteer.userDataDir with LocalAuth.
             // LocalAuth manages its own storage and is incompatible with a custom userDataDir.
         }
@@ -139,111 +139,112 @@ async function createClient() {
 
 // Initialize client
 let client;
-createClient().then(c => {
-    client = c;
-    console.log('✅ Client created, setting up event listeners...');
-    setupEventListeners();
-    initializeClient();
-}).catch(err => {
-    console.error('❌ Failed to create client:', err);
-});
 
 function setupEventListeners() {
 
-client.on('qr', qr => {
-    qrcode.generate(qr, { small: true });
-    console.log('📱 Scan this QR code with your WhatsApp account to authenticate.');
-    runtimeState.hasQr = true;
-    latestQr = qr;
-    try {
-        // Render a small ASCII QR similar to terminal output
-        // qrcode-terminal doesn't give us the string directly, so we generate via a temporary capture
-        let ascii = '';
-        qrcode.generate(qr, { small: true }, (q) => { ascii = q; });
-        latestQrAscii = ascii || 'QR available but ASCII render failed';
-    } catch (e) {
-        latestQrAscii = 'QR available but failed to render ASCII';
-    }
-});
-
-client.on('ready', () => {
-    console.log('✅ WhatsApp File Compressor Bot is ready!');
-    console.log('💡 Users need to send "help compress" to enable file compression in their chat.');
-    runtimeState.ready = true;
-    runtimeState.hasQr = false; // once ready, QR should no longer be presented
-    latestQr = null;
-    latestQrAscii = null;
-});
-
-client.on('authenticated', () => {
-    console.log('🔐 WhatsApp authentication successful!');
-    runtimeState.authenticated = true;
-    runtimeState.hasQr = false;
-    latestQr = null;
-    latestQrAscii = null;
-});
-
-client.on('auth_failure', msg => {
-    console.error('❌ Authentication failed:', msg);
-    runtimeState.authenticated = false;
-});
-
-client.on('message', async message => {
-    console.log('📨 Message received from:', message.from, '| Body:', message.body);
-
-    // Ignore group messages
-    if (message.from.includes('@g.us')) {
-        console.log('❌ Ignoring group message.');
-        return;
-    }
-
-    // Only enable compression for chats that send 'help compress'
-    // Track which chats have requested compression
-    if (!global.enabledChats) global.enabledChats = new Set();
-
-    // Enable compression for this chat if they send 'help compress'
-    if (message.body.trim().toLowerCase() === 'help compress') {
-        global.enabledChats.add(message.from);
-        await message.reply('✅ Compression enabled for this chat! Send me a file and I will compress it to under 2MB for you.');
-        return;
-    }
-
-    // If chat is not enabled, silently ignore all other messages
-    if (!global.enabledChats.has(message.from)) {
-        console.log('⚪ Chat not enabled, ignoring message silently.');
-        return;
-    }
-
-    // File compression (only for enabled chats)
-    if (message.hasMedia) {
-        await message.reply('🔄 Compressing your file...');
+    client.on('qr', qr => {
+        qrcode.generate(qr, { small: true });
+        console.log('📱 Scan this QR code with your WhatsApp account to authenticate.');
+        runtimeState.hasQr = true;
+        latestQr = qr;
         try {
-            const media = await message.downloadMedia();
-            const mediaBuffer = Buffer.from(media.data, 'base64');
-            let result;
-            
-            if (media.mimetype === 'application/pdf') {
-                // Use enhanced PDF compression
-                result = await enhancedPDFCompression(mediaBuffer, media.filename);
-            } else if (media.mimetype.startsWith('image/')) {
-                // Use enhanced image compression
-                result = await compressImageEnhanced(mediaBuffer, media.mimetype, media.filename);
-            } else {
-                throw new Error(`Unsupported file type: ${media.mimetype}`);
-            }
-
-            const compressedMedia = new MessageMedia(
-                result.mimetype,
-                result.buffer.toString('base64'),
-                result.filename
-            );
-            await message.reply(compressedMedia, undefined, { caption: '✅ Compressed file ready!' });
-        } catch (err) {
-            console.error('❌ Compression error:', err);
-            await message.reply('❌ Failed to compress your file.');
+            // Render a small ASCII QR similar to terminal output
+            // qrcode-terminal doesn't give us the string directly, so we generate via a temporary capture
+            let ascii = '';
+            qrcode.generate(qr, { small: true }, (q) => { ascii = q; });
+            latestQrAscii = ascii || 'QR available but ASCII render failed';
+        } catch (e) {
+            latestQrAscii = 'QR available but failed to render ASCII';
         }
-    }
-});
+    });
+
+    client.on('ready', () => {
+        console.log('✅ WhatsApp File Compressor Bot is ready!');
+        console.log('💡 Users need to send "help compress" to enable file compression in their chat.');
+        runtimeState.ready = true;
+        runtimeState.hasQr = false; // once ready, QR should no longer be presented
+        latestQr = null;
+        latestQrAscii = null;
+    });
+
+    client.on('authenticated', () => {
+        console.log('🔐 WhatsApp authentication successful!');
+        runtimeState.authenticated = true;
+        runtimeState.hasQr = false;
+        latestQr = null;
+        latestQrAscii = null;
+    });
+
+    client.on('auth_failure', msg => {
+        console.error('❌ Authentication failed:', msg);
+        runtimeState.authenticated = false;
+    });
+
+    client.on('message', async message => {
+        console.log('📨 Message received from:', message.from, '| Body:', message.body);
+
+        // Ignore group messages
+        if (message.from.includes('@g.us')) {
+            console.log('❌ Ignoring group message.');
+            return;
+        }
+
+        // Only enable compression for chats that send 'help compress'
+        // Track which chats have requested compression
+        if (message.body.trim().toLowerCase() === 'help compress') {
+            enabledChats.add(message.from);
+            await message.reply('✅ Compression enabled for this chat! Send me a file and I will compress it to under 2MB for you.');
+            return;
+        }
+
+        // If chat is not enabled, silently ignore all other messages
+        if (!enabledChats.has(message.from)) {
+            console.log('⚪ Chat not enabled, ignoring message silently.');
+            return;
+        }
+
+        // File compression (only for enabled chats)
+        if (message.hasMedia) {
+            await message.reply('🔄 Compressing your file...');
+            try {
+                const media = await message.downloadMedia();
+                const mediaBuffer = Buffer.from(media.data, 'base64');
+                let result;
+
+                if (media.mimetype === 'application/pdf') {
+                    // Use enhanced PDF compression
+                    result = await enhancedPDFCompression(mediaBuffer, media.filename);
+                } else if (media.mimetype.startsWith('image/')) {
+                    // Use enhanced image compression
+                    result = await compressImageEnhanced(mediaBuffer, media.mimetype, media.filename);
+                } else {
+                    throw new Error(`Unsupported file type: ${media.mimetype}`);
+                }
+
+                const compressedMedia = new MessageMedia(
+                    result.mimetype,
+                    result.buffer.toString('base64'),
+                    result.filename
+                );
+                await message.reply(compressedMedia, undefined, { caption: '✅ Compressed file ready!' });
+            } catch (err) {
+                console.error('❌ Compression error:', err);
+                await message.reply('❌ Failed to compress your file.');
+            }
+        }
+    });
+
+    client.on('disconnected', (reason) => {
+        console.log('🔌 Client was logged out:', reason);
+        runtimeState.ready = false;
+        runtimeState.authenticated = false;
+        runtimeState.hasQr = false;
+        latestQr = null;
+        latestQrAscii = null;
+        enabledChats.clear();
+        // Re-initialize to get a new QR code
+        initializeClient();
+    });
 }
 
 function initializeClient() {
@@ -252,3 +253,17 @@ function initializeClient() {
         console.error('❌ Initialization failed:', err);
     });
 }
+
+async function start() {
+    try {
+        console.log('🔧 Creating WhatsApp client...');
+        client = await createClient();
+        console.log('✅ Client created, setting up event listeners...');
+        setupEventListeners();
+        initializeClient();
+    } catch (err) {
+        console.error('❌ Failed during startup:', err);
+    }
+}
+
+start();
