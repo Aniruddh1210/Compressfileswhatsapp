@@ -1,49 +1,61 @@
-# Use Node.js 20 LTS version
-FROM node:20-slim
+# Use an official Node.js runtime as a parent image
+FROM node:18-slim
 
-# Install system dependencies for Ghostscript, curl and Chromium
+# Install necessary libraries for puppeteer
 RUN apt-get update && apt-get install -y \
-  ghostscript \
-  curl \
-  libnss3 \
-  libnspr4 \
-  libgconf-2-4 \
-  libxss1 \
-  libappindicator1 \
-  fonts-liberation \
-  libappindicator3-1 \
-  libasound2 \
-  libatk-bridge2.0-0 \
-  libdrm2 \
-  libgtk-3-0 \
-  libgtk-4-1 \
-  && rm -rf /var/lib/apt/lists/*
-WORKDIR /app
+    ca-certificates \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libc6 \
+    libcairo2 \
+    libcups2 \
+    libdbus-1-3 \
+    libexpat1 \
+    libfontconfig1 \
+    libgbm1 \
+    libgcc1 \
+    libgconf-2-4 \
+    libgdk-pixbuf2.0-0 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libstdc++6 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxi6 \
+    libxrandr2 \
+    libxrender1 \
+    libxss1 \
+    libxtst6 \
+    lsb-release \
+    wget \
+    xdg-utils
 
-# Copy package files
+# Set the working directory in the container
+WORKDIR /usr/src/app
+
+# Copy package.json and package-lock.json to leverage Docker cache
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install app dependencies
+RUN npm install --omit=dev
 
-# Copy application files
+# Bundle app source
 COPY . .
 
-# Create necessary directories
-RUN mkdir -p temp .wwebjs_auth .wwebjs_cache /data /data/auth /data/puppeteer
-
-# Set permissions
-RUN chmod -R 755 /app
-
-# Expose port for health check
+# Your app binds to port 3000, so expose it
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:${PORT:-3000} || exit 1
-
-# Declare a volume for persistence (mount this in Railway for durable sessions)
-VOLUME ["/data"]
-
-# Start the application
-CMD ["npm", "start"]
+# Define the command to run your app
+CMD [ "node", "bot.js" ]

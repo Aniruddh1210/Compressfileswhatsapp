@@ -137,3 +137,25 @@ logs/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Git and Docker
+.git
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose.yml
+
+# Platform-specific deployment files
+Procfile
+railway.json
+render.yaml
+*.md
+
+# Local data and secrets
+.env
+
+# Scripts, tests, and temporary files
+deploy-setup.sh
+test-*.js
+compression_*.js
+server.js

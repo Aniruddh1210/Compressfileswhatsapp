@@ -132,6 +132,10 @@ async function createClient() {
             executablePath: process.env.CHROME_PATH || await chromium.executablePath(),
             // Note: Do NOT set puppeteer.userDataDir with LocalAuth.
             // LocalAuth manages its own storage and is incompatible with a custom userDataDir.
+        },
+        webVersionCache: {
+            type: 'remote',
+            remotePath: `https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html`,
         }
     });
     return client;
